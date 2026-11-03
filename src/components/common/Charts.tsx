@@ -369,12 +369,14 @@ interface VelocitySparklineProps {
   data: VelocityPoint[];
   plateauDay?: number;
   height?: number;
+  activeMode?: 'combined' | 'impressions' | 'conversions';
 }
 
 export const VelocitySparkline: React.FC<VelocitySparklineProps> = ({
   data,
   plateauDay,
   height = 130,
+  activeMode = 'combined',
 }) => {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
@@ -398,6 +400,9 @@ export const VelocitySparkline: React.FC<VelocitySparklineProps> = ({
   const impPath = `M ${data.map((d, i) => `${getX(i)},${getYImp(d.impressions)}`).join(' L ')}`;
   const convPath = `M ${data.map((d, i) => `${getX(i)},${getYConv(d.conversions)}`).join(' L ')}`;
 
+  const showImp = activeMode === 'combined' || activeMode === 'impressions';
+  const showConv = activeMode === 'combined' || activeMode === 'conversions';
+
   const plateauX = plateauDay ? getX(Math.min(data.length - 1, Math.max(0, plateauDay - 1))) : null;
 
   return (
@@ -415,7 +420,7 @@ export const VelocitySparkline: React.FC<VelocitySparklineProps> = ({
         </defs>
 
         {/* Shaded Plateau Region if detected */}
-        {plateauX !== null && (
+        {plateauX !== null && showConv && (
           <g>
             <rect
               x={plateauX}
@@ -423,7 +428,7 @@ export const VelocitySparkline: React.FC<VelocitySparklineProps> = ({
               width={padding.left + innerW - plateauX}
               height={innerH}
               fill="#F59E0B"
-              fillOpacity="0.07"
+              fillOpacity="0.08"
             />
             <line
               x1={plateauX}
@@ -455,18 +460,22 @@ export const VelocitySparkline: React.FC<VelocitySparklineProps> = ({
         />
 
         {/* Areas */}
-        <path
-          d={`${impPath} L ${getX(data.length - 1)},${padding.top + innerH} L ${getX(0)},${padding.top + innerH} Z`}
-          fill="url(#grad-vel-imp)"
-        />
-        <path
-          d={`${convPath} L ${getX(data.length - 1)},${padding.top + innerH} L ${getX(0)},${padding.top + innerH} Z`}
-          fill="url(#grad-vel-conv)"
-        />
+        {showImp && (
+          <path
+            d={`${impPath} L ${getX(data.length - 1)},${padding.top + innerH} L ${getX(0)},${padding.top + innerH} Z`}
+            fill="url(#grad-vel-imp)"
+          />
+        )}
+        {showConv && (
+          <path
+            d={`${convPath} L ${getX(data.length - 1)},${padding.top + innerH} L ${getX(0)},${padding.top + innerH} Z`}
+            fill="url(#grad-vel-conv)"
+          />
+        )}
 
         {/* Curves */}
-        <path d={impPath} fill="none" stroke="#06B6D4" strokeWidth="2" strokeLinecap="round" />
-        <path d={convPath} fill="none" stroke="#A855F7" strokeWidth="2.5" strokeLinecap="round" />
+        {showImp && <path d={impPath} fill="none" stroke="#06B6D4" strokeWidth="2" strokeLinecap="round" />}
+        {showConv && <path d={convPath} fill="none" stroke="#A855F7" strokeWidth="2.5" strokeLinecap="round" />}
 
         {/* Interactive hover targets */}
         {data.map((d, i) => {
@@ -477,11 +486,11 @@ export const VelocitySparkline: React.FC<VelocitySparklineProps> = ({
 
           return (
             <g key={i} onMouseEnter={() => setHoverIdx(i)} className="cursor-pointer">
-              <circle cx={x} cy={yConv} r="10" fill="transparent" />
+              <circle cx={x} cy={showConv ? yConv : yImp} r="10" fill="transparent" />
               {isHovered && (
                 <>
-                  <circle cx={x} cy={yImp} r="4" fill="#06B6D4" stroke="#0F172A" strokeWidth="2" />
-                  <circle cx={x} cy={yConv} r="4.5" fill="#A855F7" stroke="#FFFFFF" strokeWidth="2" />
+                  {showImp && <circle cx={x} cy={yImp} r="4" fill="#06B6D4" stroke="#0F172A" strokeWidth="2" />}
+                  {showConv && <circle cx={x} cy={yConv} r="4.5" fill="#A855F7" stroke="#FFFFFF" strokeWidth="2" />}
                 </>
               )}
               {/* Milestone tick labels */}

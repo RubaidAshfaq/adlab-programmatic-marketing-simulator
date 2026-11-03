@@ -224,6 +224,7 @@ export default function App() {
               campaign={campaign}
               simulationResult={simulationResult}
               studentMode={studentMode}
+              onNavigateToOptimization={() => setCurrentSection('optimize')}
             />
           )}
 

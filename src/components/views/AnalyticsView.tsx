@@ -11,25 +11,35 @@ import {
   PieChart,
   CheckCircle2,
   HelpCircle,
+  AlertTriangle,
+  AlertCircle,
+  TrendingDown,
+  ArrowRight,
+  Activity,
+  Zap,
 } from 'lucide-react';
 import { SimulationResult, CampaignConfig } from '../../types/campaign';
 import { AreaLineChart, HorizontalBarChart, DonutChart, VelocitySparkline } from '../common/Charts';
 import { EducationalNote } from '../common/EducationalNote';
+import { analyzeFlightTrends, TrendDiagnosticAlert } from '../../utils/trendDiagnostics';
 
 interface AnalyticsViewProps {
   simulationResult: SimulationResult;
   campaign: CampaignConfig;
   studentMode: boolean;
+  onNavigateToOptimization?: () => void;
 }
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   simulationResult,
   campaign,
   studentMode,
+  onNavigateToOptimization,
 }) => {
   const [activeChartTab, setActiveChartTab] = useState<
     'spend' | 'impressions' | 'ctr' | 'conversions' | 'cpa' | 'roas'
   >('spend');
+  const [sparklineMode, setSparklineMode] = useState<'combined' | 'impressions' | 'conversions'>('combined');
 
   const { dailyMetrics, abResults, platformBreakdown, deviceBreakdown, demographicBreakdown } =
     simulationResult;
@@ -239,39 +249,65 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
       </div>
 
-      {/* NEW: Performance Trends & Growth Velocity Sparkline Card */}
+      {/* Performance Trends & Growth Velocity Sparkline Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-mono uppercase tracking-wider text-cyan-400">
-                Pacing Velocity & Saturation Diagnostics
+                Velocity & Growth Telemetry
               </span>
               <span className="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
                 Plateau Detection Active
               </span>
             </div>
             <h3 className="text-base font-bold text-white tracking-tight">
-              Performance Trends — Growth Velocity & Plateau Analysis
+              Performance Trends
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Track day-by-day velocity of impression delivery and conversion scale to identify ad fatigue and saturation plateaus.
+              Visualize the velocity of impressions and conversion growth over the campaign duration to identify ad fatigue and saturation plateaus.
             </p>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-mono shrink-0">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-              <span className="text-slate-300 font-medium">Impression Velocity</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
-              <span className="text-slate-300 font-medium">Conversion Velocity</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono shrink-0">
+            <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setSparklineMode('combined')}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                  sparklineMode === 'combined'
+                    ? 'bg-slate-800 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Combined Velocity
+              </button>
+              <button
+                onClick={() => setSparklineMode('impressions')}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                  sparklineMode === 'impressions'
+                    ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
+                    : 'text-slate-400 hover:text-cyan-300'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                <span>Impressions</span>
+              </button>
+              <button
+                onClick={() => setSparklineMode('conversions')}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                  sparklineMode === 'conversions'
+                    ? 'bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30'
+                    : 'text-slate-400 hover:text-purple-300'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-purple-400" />
+                <span>Conversions</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Growth Velocity Sparkline Visualization */}
+        {/* Growth Velocity Sparkline Visualization & Rule-Based Diagnostics Alert Panel */}
         {(() => {
           // Prepare velocity data points
           const velocityData = dailyMetrics.map((d, i) => {
@@ -285,53 +321,39 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             };
           });
 
-          // Detect conversion velocity peak and subsequent plateau
-          let peakConv = 0;
-          let peakDay = 1;
-          dailyMetrics.forEach((d) => {
-            if (d.conversions > peakConv) {
-              peakConv = d.conversions;
-              peakDay = d.day;
-            }
-          });
+          // Run rule-based trend diagnostic analysis
+          const trendAnalysis = analyzeFlightTrends(dailyMetrics, campaign);
+          const { alerts, peakDay, peakConversions, plateauInceptionDay, momentumStatus } = trendAnalysis;
 
-          // Plateau begins when conversion momentum levels off (typically after 60-70% flight)
-          const plateauDay = Math.min(
-            dailyMetrics.length,
-            Math.max(Math.round(dailyMetrics.length * 0.65), peakDay + 3)
-          );
-
-          const peakImp = Math.max(...dailyMetrics.map((d) => d.impressions));
-          const lateConvAvg =
-            dailyMetrics
-              .slice(plateauDay - 1)
-              .reduce((s, d) => s + d.conversions, 0) /
-            Math.max(1, dailyMetrics.length - plateauDay + 1);
-
-          const earlyConvAvg =
-            dailyMetrics.slice(0, plateauDay - 1).reduce((s, d) => s + d.conversions, 0) /
-            Math.max(1, plateauDay - 1);
-
+          // Velocity delta computation
+          const lateFlightDays = dailyMetrics.slice(plateauInceptionDay - 1);
+          const avgLateConversions =
+            lateFlightDays.reduce((s, d) => s + d.conversions, 0) / Math.max(1, lateFlightDays.length);
+          const earlyFlightDays = dailyMetrics.slice(0, plateauInceptionDay - 1);
+          const avgEarlyConversions =
+            earlyFlightDays.reduce((s, d) => s + d.conversions, 0) / Math.max(1, earlyFlightDays.length);
           const velocityDeltaPct = Math.round(
-            ((lateConvAvg - earlyConvAvg) / Math.max(1, earlyConvAvg)) * 100
+            ((avgLateConversions - avgEarlyConversions) / Math.max(1, avgEarlyConversions)) * 100
           );
 
           return (
             <div className="space-y-4">
+              {/* Sparkline Canvas */}
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/90">
                 <VelocitySparkline
                   data={velocityData}
-                  plateauDay={plateauDay}
+                  plateauDay={plateauInceptionDay}
                   height={130}
+                  activeMode={sparklineMode}
                 />
               </div>
 
-              {/* Plateau Diagnostic Strip */}
+              {/* Plateau Milestone Strip */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs">
                   <span className="text-[10px] text-slate-400 block font-mono">Peak Conversion Day</span>
                   <div className="text-sm font-bold text-white font-mono-numbers mt-0.5">
-                    Day {peakDay} ({peakConv.toLocaleString()} conv/day)
+                    Day {peakDay} ({peakConversions.toLocaleString()} conv/day)
                   </div>
                   <span className="text-[10px] text-slate-400">Maximum daily customer velocity</span>
                 </div>
@@ -339,32 +361,126 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs">
                   <span className="text-[10px] text-slate-400 block font-mono">Plateau Inception Point</span>
                   <div className="text-sm font-bold text-amber-400 font-mono-numbers mt-0.5">
-                    Day {plateauDay} of {dailyMetrics.length}
+                    Day {plateauInceptionDay} of {dailyMetrics.length}
                   </div>
-                  <span className="text-[10px] text-slate-400">Marginal gains began tapering</span>
+                  <span className="text-[10px] text-slate-400">Incremental gains began tapering</span>
                 </div>
 
                 <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs">
-                  <span className="text-[10px] text-slate-400 block font-mono">Saturation Velocity Delta</span>
-                  <div className="text-sm font-bold text-cyan-300 font-mono-numbers mt-0.5">
-                    {velocityDeltaPct >= 0 ? `+${velocityDeltaPct}%` : `${velocityDeltaPct}%`} Trajectory
+                  <span className="text-[10px] text-slate-400 block font-mono">Momentum Trajectory</span>
+                  <div className={`text-sm font-bold font-mono-numbers mt-0.5 ${
+                    velocityDeltaPct >= 0 ? 'text-cyan-300' : 'text-amber-300'
+                  }`}>
+                    {velocityDeltaPct >= 0 ? `+${velocityDeltaPct}%` : `${velocityDeltaPct}%`} · {momentumStatus}
                   </div>
-                  <span className="text-[10px] text-slate-400">Late-flight vs initial flight pace</span>
+                  <span className="text-[10px] text-slate-400">Post-plateau vs ramp-up phase</span>
                 </div>
 
                 <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs">
-                  <span className="text-[10px] text-slate-400 block font-mono">Recommended Action</span>
-                  <div className="text-sm font-bold text-emerald-400 mt-0.5">
-                    Creative Refresh & Cap
+                  <span className="text-[10px] text-slate-400 block font-mono">Prescribed Remedy</span>
+                  <div className="text-sm font-bold text-emerald-400 mt-0.5 truncate">
+                    {alerts[0]?.prescribedAction.split('(')[0] || 'Rotate Creative'}
                   </div>
-                  <span className="text-[10px] text-slate-400">Rotate Variant B to reset fatigue</span>
+                  <span className="text-[10px] text-slate-400">Targeting & creative refresh</span>
                 </div>
               </div>
 
+              {/* DIAGNOSTICS ALERT PANEL */}
+              {alerts.length > 0 && (
+                <div className="bg-slate-950 rounded-xl border border-amber-900/40 p-4 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white uppercase tracking-wide">
+                            Diagnostics Alert: Momentum Stalled & Plateau Evaluation
+                          </span>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
+                            alerts[0].severity === 'critical'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {alerts[0].severity.toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-400">
+                          Algorithmic detection of audience fatigue, volume dips, and diminishing marginal returns.
+                        </span>
+                      </div>
+                    </div>
+
+                    {onNavigateToOptimization && (
+                      <button
+                        onClick={onNavigateToOptimization}
+                        className="px-3 py-1.5 text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg flex items-center gap-1.5 transition-colors self-start sm:self-auto shrink-0 shadow-sm"
+                      >
+                        <span>Fix in Optimization Lab</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Alert Details Grid */}
+                  <div className="space-y-3">
+                    {alerts.map((alert) => (
+                      <div
+                        key={alert.id}
+                        className="bg-slate-900/90 rounded-lg p-3.5 border border-slate-800/80 space-y-2 text-xs"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-200">{alert.title}</span>
+                            <span className="text-[10px] font-mono bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded">
+                              Day {alert.triggerDay} Trigger
+                            </span>
+                          </div>
+                          <div className="font-mono text-[11px] text-amber-300">
+                            {alert.triggerMetric}: <strong>{alert.triggerMetricValue}</strong>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px]">
+                          <div className="bg-slate-950 p-2.5 rounded border border-slate-800/60">
+                            <strong className="text-slate-300 block mb-0.5">
+                              Why Did Momentum Stall? (Root Cause)
+                            </strong>
+                            <p className="text-slate-400 leading-relaxed">
+                              {alert.rootCause}
+                            </p>
+                          </div>
+
+                          <div className="bg-slate-950 p-2.5 rounded border border-slate-800/60">
+                            <strong className="text-slate-300 block mb-0.5">
+                              Pedagogical Advertising Concept
+                            </strong>
+                            <p className="text-slate-400 leading-relaxed">
+                              {alert.educationalExplanation}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[11px]">
+                          <div className="text-emerald-400 flex items-center gap-1.5">
+                            <Zap className="w-3.5 h-3.5 shrink-0" />
+                            <span><strong>Actionable Remedy:</strong> {alert.prescribedAction}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-500 uppercase">
+                            Focus: {alert.optimizationTarget}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Student Note on Growth Plateaus */}
               <div className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 space-y-1">
-                <strong className="text-white">Student Learning Concept — The Growth Plateau: </strong>
-                In digital advertising, impressions can continue to climb steadily (cyan curve), but conversion velocity (purple curve) often levels off or declines after frequency exceeds 3.5 exposures. When students notice this plateau (highlighted in amber), it signals <em>audience ad fatigue</em> and <em>diminishing marginal returns</em>. The remedy is to rotate creative variants or expand audience targeting in the <strong>Optimization Lab</strong>.
+                <strong className="text-white">Student Learning Concept — Identifying Growth Plateaus: </strong>
+                In programmatic media, impressions can continue to climb steadily (cyan curve), but conversion velocity (purple curve) often flattens out after audience frequency exceeds 3.5 exposures. When this plateau occurs, continuing to bid on the same saturated audience burns ad spend without incremental return. Digital advertisers solve this by rotating to fresher creative variants, adjusting frequency caps, or expanding geo-demographic targeting in the <strong>Optimization Lab</strong>.
               </div>
             </div>
           );
