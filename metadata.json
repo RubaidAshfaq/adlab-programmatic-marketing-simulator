@@ -1,0 +1,6 @@
+{
+  "name": "ADLAB — Data-Driven Advertising & Programmatic Marketing Simulator",
+  "description": "Interactive educational DSP & programmatic advertising simulator for media planning, RTB auctions, A/B testing, and campaign effectiveness analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
